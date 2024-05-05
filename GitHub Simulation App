@@ -1,0 +1,896 @@
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+
+
+using namespace std;
+
+// Forward declarations
+class User;
+class Commit;
+class File;
+class Repository;
+class Graph;
+class UserManager;
+
+// Commit class declaration
+class Commit {
+	public:
+    string message;
+    Commit* next; // Pointer to next commit
+
+    Commit(const string& message) : message(message), next(nullptr) {}
+
+    friend class Repository; // Allow Repository class to access private members
+};
+
+// File class declaration
+class File {
+	public:
+    string name;
+    File* next; // Pointer to next file
+
+    File(const string& name) : name(name), next(nullptr) {}
+
+    friend class Repository; // Allow Repository class to access private members
+};
+
+// Repository class declaration
+class Repository {
+	public:
+    string name;
+    Repository* parent; // For forked repositories
+    int forkCount;
+    unordered_set<User*> collaborators;
+    Commit* commitHead; // Head of the commit linked list
+    File* fileHead;     // Head of the file linked list
+    bool isPrivate;
+
+	public:
+    Repository(const string& name, bool isPrivate = false) : name(name), parent(nullptr), forkCount(0), commitHead(nullptr), fileHead(nullptr), isPrivate(isPrivate) {}
+
+    // Add commit to the linked list
+    void addCommit(const string& message) 
+	{
+        Commit* newCommit = new Commit(message);
+        newCommit->next = commitHead;
+        commitHead = newCommit;
+    }
+
+   
+    // Method to add/push a file to the repository
+    void addFile(const string& filename) 
+	{
+        File* newFile = new File(filename);
+        newFile->next = fileHead;
+        fileHead = newFile;
+    }
+
+    // Method to delete a file from the repository
+    void deleteFile(const string& filename) 
+	{
+        File* prev = nullptr;
+        File* curr = fileHead;
+        while (curr) {
+            if (curr->name == filename) 
+			{
+                if (prev) 
+				{
+                    prev->next = curr->next;
+                } 
+				else 
+				{
+                    fileHead = curr->next;
+                }
+                delete curr;
+                cout << "File '" << filename << "' deleted from repository '" << name << "'.\n";
+                return;
+            }
+            prev = curr;
+            curr = curr->next;
+        }
+        cout << "File '" << filename << "' not found in repository '" << name << "'.\n";
+    }
+    
+	void deleteRepository() 
+	{
+    // Perform cleanup operations and delete repository
+    // This can include deleting files, commits, collaborators, etc.
+    // Also, handle deletion of forked repositories if any
+
+    // Finally, delete the repository object itself
+    delete this;
+	}
+	
+	//for Increament fork
+    void incrementForkCount() 
+	{
+        forkCount++;
+    }
+    
+    void decrementForkCount() 
+	{
+        forkCount--;
+    }
+    
+    void addCollaborator(User* user) 
+	{
+        collaborators.insert(user);
+    }
+    
+    void removeCollaborator(User* user) 
+	{
+        collaborators.erase(user);
+    }
+    
+    bool isCollaborator(User* user) const 
+	{
+        return collaborators.find(user) != collaborators.end();
+    }
+    
+    void makePrivate() 
+	{
+        isPrivate = true;
+    }
+    
+    void makePublic() 
+	{
+        isPrivate = false;
+    }
+    
+    //repositry Stat
+    void getRepositoryStats() const 
+	{
+    cout << "Repository Name: " << name << endl;
+    cout << "Files:\n";
+    File* file = fileHead;
+    while (file){
+        cout << "  - " << file->name << endl;
+        file = file->next;
+    }
+    
+    cout << "Commits:\n";
+    Commit* commit = commitHead;
+    while (commit) {
+        cout << "  - " << commit->message << endl;
+        commit = commit->next;
+    }
+    cout << "Fork Count: " << forkCount << endl;
+	}
+};
+
+// Graph class declaration
+class Graph {
+	public:
+    unordered_map<User*, unordered_set<User*>> adjList;
+
+    Graph() {}
+
+    void addEdge(User* u, User* v) 
+	{
+        adjList[u].insert(v);
+    }
+
+    void removeEdge(User* u, User* v) 
+	{
+        adjList[u].erase(v);
+    }
+
+    bool hasEdge(User* u, User* v) 
+	{
+        return adjList[u].find(v) != adjList[u].end();
+    }
+
+    unordered_set<User*> getFollowers(User* u) 
+	{
+        return adjList[u];
+    }
+	
+	//Add follower
+    void addFollower(User* u, User* follower) 
+	{
+        adjList[u].insert(follower);
+    }
+
+	//remove follower
+    void removeFollower(User* u, User* follower) 
+	{
+        adjList[u].erase(follower);
+    }
+	
+	//follower count
+    int getFollowerCount(User* u) 
+	{
+        return adjList[u].size();
+    }
+
+    int getFollowingCount(User* u) 
+	{
+        int count = 0;
+        for (const auto& pair : adjList) 
+		{
+            if (pair.second.find(u) != pair.second.end()) 
+			{
+                count++;
+            }
+        }
+        return count;
+    }
+
+    bool isMutualFollow(User* u1, User* u2) 
+	{
+        return adjList[u1].find(u2) != adjList[u1].end() && adjList[u2].find(u1) != adjList[u2].end();
+    }
+    // Other graph functionalities can be added here
+};
+
+// User class declaration
+class User{
+	public:
+    string username;
+    string password;
+    unordered_map<string, Repository*> repositories;
+    unordered_set<User*> followers;
+    Graph* socialGraph;
+
+    User(const string& username, const string& password) : username(username), password(password), socialGraph(new Graph()) {}
+	
+	//getter 
+    string getUsername() const 
+	{
+        return username;
+    }
+	
+	// Create a public repository
+    void createPublicRepository(const string& repoName) 
+	{
+        repositories[repoName] = new Repository(repoName, false); // Create repository with public visibility
+    }
+
+    // Create a private repository
+    void createPrivateRepository(const string& repoName) 
+	{
+        repositories[repoName] = new Repository(repoName, true); // Create repository with private visibility
+    }
+    bool authenticate(const string& password) const 
+	{
+        return this->password == password;
+    }
+
+    void createRepository(const string& repoName) 
+	{
+        repositories[repoName] = new Repository(repoName);
+    }
+
+	//Delete Repository
+    void deleteRepository(const string& repoName) 
+	{
+        auto it = repositories.find(repoName);
+        if (it != repositories.end()) 
+		{
+            delete it->second;
+            repositories.erase(it);
+        } 
+		else 
+		{
+            cerr << "Repository not found: " << repoName << endl;
+        }
+    }
+
+	//For follow to user
+	void follow(User* user) 
+	{
+    socialGraph->addEdge(this, user);
+    user->addFollower(this);
+    user->followers.insert(this); // Add the follower to the user's followers set
+	}
+	
+	//unfollow method
+    void unfollow(User* user) 
+	{
+        socialGraph->removeEdge(this, user);
+        user->removeFollower(this);
+    }
+
+	//add follower
+    void addFollower(User* user) 
+	{
+        followers.insert(user);
+    }
+
+	//remove follower
+    void removeFollower(User* user) 
+	{
+        followers.erase(user);
+    }
+
+    bool isFollowing(User* user) 
+	{
+        return socialGraph->hasEdge(this, user);
+    }
+    
+    // Add a data structure in the User class to store collaborator names
+    unordered_set<string> collaboratorNames;
+
+    // Update methods to add and retrieve collaborators
+    void addCollaboratorName(const string& collaboratorName) 
+	{
+        collaboratorNames.insert(collaboratorName);
+    }
+
+    unordered_set<string> getCollaboratorNames() const 
+	{
+        return collaboratorNames;
+    }
+    
+	// Add a collaborator to the repository
+	void addRepositoryCollaborator(const string& repoName, User* collaborator) 
+	{
+    	auto it = repositories.find(repoName);
+    	if (it != repositories.end()) 
+		{
+        	it->second->addCollaborator(collaborator);
+        	// Add collaborator's username to collaboratorNames set
+        	collaboratorNames.insert(collaborator->getUsername());
+    	}	 
+		else 
+		{
+        	cerr << "Repository not found: " << repoName << endl;
+    	}
+	}
+
+	//Remove repo collaborator
+    void removeRepositoryCollaborator(const string& repoName, User* collaborator) 
+	{
+        auto it = repositories.find(repoName);
+        if (it != repositories.end()) 
+		{
+            it->second->removeCollaborator(collaborator);
+        } 
+		else 
+		{
+            cerr << "Repository not found: " << repoName << endl;
+        }
+    }
+
+    bool isRepositoryCollaborator(const string& repoName, User* collaborator) 
+	{
+        auto it = repositories.find(repoName);
+        if (it != repositories.end()) 
+		{
+            return it->second->isCollaborator(collaborator);
+        } 
+		else 
+		{
+            cerr << "Repository not found: " << repoName << endl;
+            return false;
+        }
+    }
+    // Other user functionalities can be added here
+};
+
+// UserManager class declaration
+class UserManager {
+	public:
+    unordered_map<string, User*> users;
+
+    UserManager() {}
+	
+	//Fork repo
+	void forkRepository(const string& repoName, User* sourceUser) 
+	{
+		
+    auto it = sourceUser->repositories.find(repoName);
+    
+    if (it != sourceUser->repositories.end()) 
+	{
+        Repository* sourceRepo = it->second;
+        
+        if (!sourceRepo->isPrivate) 
+		{ 
+		// Check if the repository is public
+            Repository* newRepo = new Repository(repoName); // Create a new repository
+            // Copy files from the source repository to the new repository
+            File* file = sourceRepo->fileHead;
+            cout << "Select files to fork:\n";
+            while (file) 
+			{
+                cout << "Do you want to fork file '" << file->name << "'? (Y/N): ";
+                char choice;
+                cin >> choice;
+                if (toupper(choice) == 'Y') 
+				{
+                    newRepo->addFile(file->name);
+                }
+                file = file->next;
+            }
+            
+            // Prompt for a comment for the fork
+            cout << "Enter a comment for the fork: ";
+            cin.ignore(); // Clear the input buffer
+            string comment;
+            getline(cin, comment);
+            newRepo->addCommit(comment); // Add the comment as the initial commit
+            // Add the new repository to the user's repository list
+            users[sourceUser->username]->repositories[repoName] = newRepo;
+            cout << "Repository '" << repoName << "' forked successfully.\n";
+        } 
+		else 
+		{
+            cout << "Cannot fork private repository '" << repoName << "'.\n";
+        }
+    } 
+	else 
+	{
+        cout << "Repository '" << repoName << "' not found.\n";
+    }
+	}
+
+	//Register Method
+    void registerUser(const string& username, const string& password) 
+	{
+        if (users.find(username) == users.end()) 
+		{
+            users[username] = new User(username, password);
+            cout << "User " << username << " registered successfully.\n";
+        } 
+		else 
+		{
+            cout << "Username " << username << " already exists. Please choose a different username.\n";
+        }
+    }
+	
+	//login Method
+    User* login(const string& username, const string& password) 
+	{
+        if (users.find(username) != users.end()) 
+		{
+            if (users[username]->authenticate(password)) 
+			{
+                cout <<"=>>> Login successful. Welcome, " << username << "!\n";
+                return users[username];
+            } 
+			else 
+			{
+                cout << "Invalid password for user " << username << ". Please try again.\n";
+            }
+        } 
+		else 
+		{
+            cout << "User " << username << " does not exist. Please register first.\n";
+        }
+        return nullptr;
+    }
+	
+	//get User
+    User* getUser(const string& username) 
+	{
+        if (users.find(username) != users.end()) 
+		{
+            return users[username];
+        } 
+		else 
+		{
+            cout << "User " << username << " not found.\n";
+            return nullptr;
+        }
+    }
+
+    // Add a method to check if a username already exists
+    bool isUsernameExists(const string& username) 
+	{
+        return users.find(username) != users.end();
+    }
+
+	// Modify the viewProfile method in the UserManager class
+	void viewProfile(const string& username) 
+	{
+    cout << "\n((((======User Profile=====)))))\n";
+    User* user = getUser(username);
+    if (user) 
+	{
+        cout << "Username: " << user->getUsername() << endl;
+        cout << "Followers: " << user->followers.size() << endl;
+
+        cout << "Users You Are Following:\n";
+        for (const auto& following : user->socialGraph->adjList[user]) 
+		{
+            cout << "  - " << following->getUsername() << endl;
+        }
+
+        cout << "Users Following You:\n";
+        for (const auto& follower : user->followers) 
+		{
+            cout << "  - " << follower->getUsername() << endl;
+        }
+
+        cout << "Repositories:\n";
+        for (const auto& repo : user->repositories) 
+		{
+            cout << "  - " << repo.first << endl;
+            repo.second->getRepositoryStats(); // Get repository stats
+            cout << endl;
+        }
+		
+		//Collaborators
+		cout << "Collaborators:\n"; // Include collaborators
+        for (const auto& collaborator : user->getCollaboratorNames()) 
+		{
+            cout << "  - " << collaborator << endl;
+        }
+        
+        cout << "Repositories You Are Collaborating On:\n";
+        for (const auto& repoPair : user->repositories) 
+		{
+            const auto& repoName = repoPair.first;
+            const auto& repo = repoPair.second;
+            for (const auto& collaborator : repo->collaborators) 
+			{
+                cout << "  - Collaborator in " << repoName << "'s repository: " << collaborator->getUsername() << endl;
+            }
+        }
+    }
+}
+
+    ~UserManager() 
+	{
+        for (auto& pair : users) 
+		{
+            delete pair.second;
+        }
+    }
+};
+
+
+// Function to read lines from a file
+unordered_map<string, string> readLines(const string& filename) 
+{
+    unordered_map<string, string> data;
+    ifstream inputFile(filename);
+    if (inputFile.is_open()) 
+	{
+        string line;
+        while (getline(inputFile, line)) 
+		{
+            istringstream iss(line);
+            string username, password;
+            if (getline(iss, username, ',') && getline(iss, password)) 
+			{
+                data[username] = password;
+            }
+        }
+        inputFile.close();
+    } 
+	else 
+	{
+        cerr << "Unable to open file: " << filename << endl;
+    }
+    return data;
+}
+
+
+int main() {
+    UserManager userManager;
+
+    string username, password;
+    cout<<"\n\n-------------------------------------------------------------------------------------------------------\n";
+    cout << "\t\t(((============[Welcome to GitHub Simulation Console Application!]============)))\n";
+    cout<<"--------------------------------------------------------------------------------------------------------\n";
+
+    // Register users
+    while (true) {
+        cout << "\n\n((====[Registration]====))\n";
+        cout << "Enter username: ";
+        cin >> username;
+        if (userManager.isUsernameExists(username)) 
+		{
+            cout << "Username already exists. Please choose a different username.\n";
+            continue;
+        }
+        cout << "Enter password: ";
+        cin >> password;
+        userManager.registerUser(username, password);
+
+        char choice;
+        cout << "\nDo you want to register another user? (Y/N): ";
+        cin >> choice;
+        if (toupper(choice) != 'Y') 
+		{
+            break;
+        }
+    }
+
+    cout << "\n\nPlease login to continue.\n";
+    cout << "Enter username: ";
+    cin >> username;
+    cout << "Enter password: ";
+    cin >> password;
+
+    // Logging in the user
+    User* currentUser = nullptr; // Initialize currentUser outside the login loop
+
+    while (true) 
+	{
+        // If currentUser is not logged in, prompt for login
+        if (!currentUser) 
+		{
+            cout << "\nPlease login to continue.\n";
+            cout << "Enter username: ";
+            cin >> username;
+            cout << "Enter password: ";
+            cin >> password;
+
+            // Logging in the user
+            currentUser = userManager.login(username, password);
+
+            // If login unsuccessful, prompt for login credentials again
+            if (!currentUser) 
+			{
+                cout << "Invalid username or password. Please try again.\n";
+                continue; // Skip the rest of the loop and go back to prompting for login
+            }
+        }
+
+        int choice;
+
+        cout << "\n\n(((======Main Menu======)))\n";
+        cout << endl;
+        cout << "1) Create Repository\n";
+        cout << "2) Add File in Repository\n";
+        cout << "3) Delete File From Repository\n";
+        cout << "4) Comment on Repository\n";
+        cout << "5) Delete Repository\n";
+        cout << "6) Wanna See Repository Stat\n";
+        cout << "7) Follow User\n";
+        cout << "8) Unfollow User\n";
+        cout << "9) View Profile\n";
+        cout << "10) Add Collaborator to Repository\n"; // Option to add a collaborator to a repository
+        cout << "11) Remove Collaborator from Repository\n"; // Option to remove a collaborator from a repository
+        cout << "12) Fork Functionality (Copy any Repo,file or Comment) \n";
+        cout << "13) Logout\n";
+        cout<<endl; 
+        cout << "Enter your choice: ";
+        cin >> choice;
+
+        switch (choice) {
+
+        case 1: 
+		{
+            string repoName;
+            char repoVisibility;
+            cout << "Enter repository name: ";
+            cin >> repoName;
+            cout << "Do you want to make the repository public or private? (P for Public, any other key for Private): ";
+            cin >> repoVisibility;
+            bool isPrivate = (toupper(repoVisibility) != 'P');
+
+            if (isPrivate) 
+			{
+                currentUser->createPrivateRepository(repoName);
+            } 
+			else 
+			{
+                currentUser->createPublicRepository(repoName);
+            }
+            cout << "Repository '" << repoName << "' created successfully.\n";
+            break;
+        }
+
+        case 2: 
+		{
+            // Option to add a file to a repository
+            string repoName, fileName;
+            cout << "Enter repository name: ";
+            cin >> repoName;
+            cout << "Enter file name: ";
+            cin >> fileName;
+            if (currentUser->repositories.find(repoName) != currentUser->repositories.end()) 
+			{
+                currentUser->repositories[repoName]->addFile(fileName);
+                cout << "File '" << fileName << "' added to repository '" << repoName << "'.\n";
+            } 
+			else 
+			{
+                cout << "Repository '" << repoName << "' not found.\n";
+            }
+            break;
+        }
+
+        case 3: 
+		{
+            // Option to delete a file from a repository
+            string repoName, fileName;
+            cout << "Enter repository name: ";
+            cin >> repoName;
+            cout << "Enter file name: ";
+            cin >> fileName;
+
+            if (currentUser->repositories.find(repoName) != currentUser->repositories.end()) 
+			{
+                currentUser->repositories[repoName]->deleteFile(fileName);
+            } 
+			else 
+			{
+                cout << "Repository '" << repoName << "' not found.\n";
+            }
+            break;
+        }
+
+        case 4: 
+		{
+            string repoName;
+            cout << "Enter repository name: ";
+            cin >> repoName;
+
+            // Option to add a commit to the repository
+            if (currentUser->repositories.find(repoName) != currentUser->repositories.end()) 
+			{
+                string commitMessage;
+                cout << "Enter commit message: ";
+                cin.ignore(); // Clear the input buffer
+                getline(cin, commitMessage);
+                currentUser->repositories[repoName]->addCommit(commitMessage);
+                cout << "Commit added to repository '" << repoName << "'.\n";
+            } 
+			else 
+			{
+                cout << "Repository '" << repoName << "' not found.\n";
+            }
+            break;
+        }
+
+        case 5: 
+		{
+            string repoName;
+            cout << "Enter repository name to delete: ";
+            cin >> repoName;
+            currentUser->deleteRepository(repoName);
+            break;
+        }
+
+
+        case 6: 
+		{
+            // View Repository Statistics
+            string repoName;
+            cout << "Enter repository name: ";
+            cin >> repoName;
+            if (currentUser->repositories.find(repoName) != currentUser->repositories.end()) 
+			{
+                Repository* repo = currentUser->repositories[repoName];
+                cout << "Repository Name: " << repo->name << endl;
+                cout << "Repository Files:\n";
+                File* file = repo->fileHead;
+
+                while (file) 
+				{
+                    cout << "- " << file->name << endl;
+                    file = file->next;
+                }
+
+                cout << "Repository Commits:\n";
+                Commit* commit = repo->commitHead;
+
+                while (commit) 
+				{
+                    cout << "- " << commit->message << endl;
+                    commit = commit->next;
+                }
+                cout << "Repository Fork Count: " << repo->forkCount << endl;
+            }       
+            else 
+			{
+                cout << "Repository '" << repoName << "' not found.\n";
+            }
+            break;
+        }
+
+        case 7: 
+		{
+            string userToFollow;
+            cout << "Enter username to follow: ";
+            cin >> userToFollow;
+            User* user = userManager.getUser(userToFollow); // Retrieve user without authentication
+            if (user) 
+			{
+                currentUser->follow(user);
+                cout << "You are now following user '" << userToFollow << "'.\n";
+            }
+            break;
+        }
+
+        case 8: 
+		{
+            string userToUnfollow;
+            cout << "Enter username to unfollow: ";
+            cin >> userToUnfollow;
+            User* user = userManager.getUser(userToUnfollow); // Retrieve user without authentication
+            if (user) 
+			{
+                currentUser->unfollow(user);
+                cout << "You have unfollowed user '" << userToUnfollow << "'.\n";
+            }
+            break;
+        }
+
+        case 9: 
+		{
+            // View profile option
+            userManager.viewProfile(username);
+            break;
+        }
+
+        case 10: 
+		{
+            string repoName, collaboratorUsername;
+            cout << "Enter repository name: ";
+            cin >> repoName;
+            cout << "Enter collaborator's username: ";
+            cin >> collaboratorUsername;
+            User* collaborator = userManager.getUser(collaboratorUsername);
+            if (collaborator) 
+			{
+                currentUser->addRepositoryCollaborator(repoName, collaborator);
+                cout << "Collaborator '" << collaboratorUsername << "' added to repository '" << repoName << "'.\n";
+            }
+            break;
+        }
+
+        case 11: 
+		{
+            string repoName, collaboratorUsername;
+            cout << "Enter repository name: ";
+            cin >> repoName;
+            cout << "Enter collaborator's username to remove: ";
+            cin >> collaboratorUsername;
+            User* collaborator = userManager.getUser(collaboratorUsername);
+
+            if (collaborator) 
+			{
+                currentUser->removeRepositoryCollaborator(repoName, collaborator);
+                cout << "Collaborator '" << collaboratorUsername << "' removed from repository '" << repoName << "'.\n";
+            }
+            break;
+        }
+
+        case 12: 
+		{
+            // Option to fork a public repository
+            string repoName;
+            cout << "Enter the name of the repository to fork: ";
+            cin >> repoName;
+            userManager.forkRepository(repoName, currentUser);
+            break;
+        }
+
+        case 13: 
+		{
+            char logoutChoice;
+            cout << "Do you want to log in with a different account? (Y/N): ";
+            cin >> logoutChoice;
+            if (toupper(logoutChoice) == 'Y') 
+			{
+                // Log out and set currentUser to nullptr
+                currentUser = nullptr;
+            } 
+			else 
+			{
+                cout << "Exiting the program...\n";
+                return 0; // Exit the program
+            }
+            break;
+        }
+
+        default: 
+		{
+            cout << "Invalid choice. Please try again.\n";
+            break;
+        }
+        }
+    }
+    return 0;
+}
+
